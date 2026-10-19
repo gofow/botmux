@@ -36,6 +36,8 @@ botmux auth request --scope "docx:document:readonly" --json
 botmux auth wait --request-id <返回的请求ID> --json
 ```
 
+显式 `--scope` 只申请本次操作所需权限、`offline_access` 和当前应用下该用户已有的授权权限，不额外捆绑消息读取或消息资源权限。例如只读 Base 查询不会因未开通用户身份 `im:resource` 而无法完成授权。已有权限仍合并进请求，避免新 token 覆盖时丢失；所请求权限未全部获批或授权者身份不符时仍拒绝保存。`/login` 和省略 `--scope` 的 `auth request` 保留通用登录的基础权限。
+
 bot 读取失败后，agent 可根据任务与错误尝试 user。包装器不会自动重放业务命令；写入超时或部分成功时，应先确认结果，避免重复创建或发送。
 
 ## 范围与生命周期

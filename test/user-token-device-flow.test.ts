@@ -108,6 +108,25 @@ describe('user authorization device flow', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it('accepts a task-only grant and makes it available only to the verified requester', async () => {
+    tokenBody.scope = 'offline_access base:field:read base:record:read';
+    const auth = await requestUserAuthorization(
+      APP, 'secret', 'feishu', ['base:field:read', 'base:record:read'], USER, () => current,
+    );
+
+    advance(5);
+    expect(await auth.poll()).toEqual({ status: 'ready', token: TOKEN });
+    expect(auth.scopes).toEqual(['offline_access', 'base:field:read', 'base:record:read']);
+    const { resolveUserToken } = await import('../src/utils/user-token.js');
+    expect(await resolveUserToken(APP, 'secret', 'feishu', USER)).toBe(TOKEN);
+    expect(await resolveUserToken(APP, 'secret', 'feishu', 'ou_other_requester')).toBeNull();
+  });
+
+  it('retains the default login scopes when no task scopes are specified', async () => {
+    const auth = await requestUserAuthorization(APP, 'secret', 'feishu', [], USER, () => current);
+    expect(auth.scopes).toEqual(['im:message:readonly', 'im:resource', 'offline_access']);
+  });
+
   it('keeps previously granted scopes when requesting an incremental authorization', async () => {
     const path = join(tokenDir, `user-token-${APP}-${USER}.json`);
     writeFileSync(path, JSON.stringify({
@@ -116,7 +135,7 @@ describe('user authorization device flow', () => {
       token_type: 'Bearer',
       expires_at: '2026-09-19T01:00:00.000Z',
       refresh_expires_at: '2026-10-19T00:00:00.000Z',
-      scope: 'docs:document.comment:read offline_access',
+      scope: 'im:message:readonly docs:document.comment:read offline_access',
       appId: APP,
       brand: 'feishu',
       openId: USER,
@@ -132,10 +151,9 @@ describe('user authorization device flow', () => {
     );
 
     expect(auth.scopes).toEqual([
-      'im:message:readonly',
-      'im:resource',
       'offline_access',
       'contact:user.base:readonly',
+      'im:message:readonly',
       'docs:document.comment:read',
     ]);
     expect(grantedScope).toBe(auth.scopes.join(' '));

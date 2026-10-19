@@ -511,13 +511,12 @@ function splitScopes(scope: string | undefined): string[] {
 function authorizationScopes(
   appId: string,
   brand: Brand,
-  extraScopes: string[],
+  requestedScopes: string[],
   openId: string,
 ): string[] {
   const existing = loadTokenForApp(appId, brand, openId);
   return [...new Set([
-    ...DEFAULT_SCOPES.split(' '),
-    ...extraScopes,
+    ...requestedScopes,
     ...splitScopes(existing?.token.scope),
   ])];
 }
@@ -541,7 +540,12 @@ export async function requestUserAuthorization(
   poll: () => Promise<UserAuthorizationPollResult>;
 }> {
   if (!isUsableOpenId(openId) || !isCurrent()) throw new Error('authorization_origin_changed');
-  const scopes = authorizationScopes(appId, brand, extraScopes, openId);
+  // Explicit task authorization must not depend on unrelated login scopes.
+  // An unscoped request retains the default login contract.
+  const requestedScopes = extraScopes.length > 0
+    ? ['offline_access', ...extraScopes]
+    : DEFAULT_SCOPES.split(' ');
+  const scopes = authorizationScopes(appId, brand, requestedScopes, openId);
   const response = await fetch(`${larkHosts(brand).accounts}/oauth/v1/device_authorization`, {
     method: 'POST',
     headers: {
@@ -717,9 +721,10 @@ export function generateAuthUrl(
 
   // 基础 scope + 调用方按需追加 + 这个用户已有的 scope（去重）。旧 scope 必须
   // 一起申请，否则新 token 覆盖同一用户的旧文件时会造成静默降权。
+  const requestedScopes = [...DEFAULT_SCOPES.split(' '), ...extraScopes];
   const scopes = isUsableOpenId(openId)
-    ? authorizationScopes(appId, brand, extraScopes, openId)
-    : [...new Set([...DEFAULT_SCOPES.split(' '), ...extraScopes])];
+    ? authorizationScopes(appId, brand, requestedScopes, openId)
+    : [...new Set(requestedScopes)];
   const scope = scopes.join(' ');
   const params = new URLSearchParams({
     client_id: appId,
